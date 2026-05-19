@@ -150,13 +150,13 @@ Using 5 structured features from the Amazon review dataset — star rating, revi
 
 ### What can be done to improve it?
 
-1. **Richer text features**: Replace character-count `review_length` with TF-IDF vectors or sentence embeddings from `review_body` — semantic content is a stronger helpfulness signal than raw length
-2. **More boosting rounds**: Increasing `maxIter` from 20 to 50-100 with a smaller `stepSize` (0.05) could further reduce residual errors
-3. **Additional feature engineering**: Log-transformed vote counts (`log_total_votes`)
+1. **More boosting rounds**: Increasing `maxIter` from 20 to 50-100 with a smaller `stepSize` (0.05) could further reduce residual errors
+2. **Additional feature engineering**: Log-transformed vote counts (`log_total_votes`)
+3. **Richer text features**: Replace character-count `review_length` with TF-IDF vectors or sentence embeddings from `review_body` — semantic content is a stronger helpfulness signal than raw length
 
 ### How did distributed computing help?
 
-Training on 36M rows (filtered and sampled from 109M) across multiple Spark executors on SDSC Expanse parallelizes the data scanning and tree-building stages of GBT. Without distributed execution, even loading the full 50GB parquet dataset would exceed single-machine memory. Spark MLlib's Pipeline API ensures the preprocessing and modeling steps are reproducible and scalable across the cluster.
+Training on 36M rows (filtered and sampled from 109M) across multiple Spark executors on SDSC Expanse parallelizes the data scanning and tree-building stages of GBT. Without distributed execution, even loading the full 50GB parquet dataset would exceed single-machine memory. Spark MLlib's Pipeline API ensures the preprocessing and modeling steps are reproducible and scalable across the cluster. (However, since the SpeedUp efficiency was low, the distributed computing was not as critical as expected)
 
 ---
 
