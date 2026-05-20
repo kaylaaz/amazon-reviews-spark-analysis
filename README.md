@@ -1,200 +1,123 @@
-# Milestone 3: Preprocessing & First Distributed Model with Amazon US Customer Reviews
----
+# Amazon US Customer Reviews Spark Analysis
+This project uses the [Amazon US Customer Reviews](https://www.kaggle.com/datasets/cynthiarempel/amazon-us-customer-reviews-dataset) dataset sourced from Kaggle. The dataset is approximately 50.68 GB and contains over 109 million rows spanning dozens of product categories. The goal is to predict whether a review is helpful, defined as having a helpfulness ratio (`helpful_votes` / `total_votes`) of at least 0.5.
 
-## 1. Complete Preprocessing using Spark (8 points)
 
-The preprocessing pipeline transforms the raw 109M-row Amazon US Customer Reviews dataset into a clean, model-ready format using Spark DataFrame operations and Spark MLlib transformers. The pipeline is structured in four modular stages for reproducibility.
+## 1. Preprocessing
+All preprocessing was implemented using Spark DataFrame operations and Spark MLlib transformers on SDSC Expanse. The preprocessing pipeline is divided into four stages and is fully reproducible by running the notebook cells in order. The cleaned dataset is saved to Parquet and checkpointed so downstream model training does not need to rerun preprocessing.
 
-**Stage 1 — Data Cleaning (`cleansing1`)**
-Invalid product categories, malformed star ratings (non-1~5), null records, and duplicate review IDs are removed. Missing values in `star_rating`, `helpful_votes`, `total_votes` are filled using `Imputer` with median strategy.
+### Step 1: Data Cleaning
+The `product_category` column contained invalid entries, such as dates and free-form review text. These were removed by filtering to a list of known valid categories. The `star_rating`, `helpful_votes`, and `total_votes` columns were cast from strings to integers, and rows with star ratings outside the valid range of 1 to 5 were dropped. Rows with null values in `review_id`, `review_body`, `review_headline`, `review_date`, or `product_category` were dropped because these fields are essential for both analysis and modeling. Duplicate reviews were removed by deduplicating on `review_id` to prevent data leakage between train and test splits. `Imputer` from `pyspark.ml.feature` was then applied to `star_rating`, `helpful_votes`, and `total_votes` using a median strategy to handle any remaining missing numeric values.
 
-**Stage 2 — Numerical Encoding (`cleansing2`)**
-`verified_purchase` and `product_category` are converted to numeric indices using `StringIndexer`. Review headline character count is computed as a new feature (`review_headline_length`).
+### Step 2: Encoding
+`star_rating` was cast to an integer to ensure the correct numeric type after imputation. A new column `review_headline_length` was created by applying the `length()` Spark SQL function to the `review_headline` column. `StringIndexer` was applied to `verified_purchase` to produce `verified_purchase_idx` and to `product_category` to produce `category_idx`, converting categorical string columns into numeric indices compatible with MLlib model inputs.
 
-**Stage 3 — Text Analytics & Feature Engineering (`cleansing3`)**
-Review body character count (`review_length`) is extracted. Log-transformed vote counts (`log_helpful_votes`, `log_total_votes`, `log_review_length`) are created. Review body is tokenized via `Tokenizer` for potential NLP use.
+### Step 3: Feature Engineering and Scaling
+`review_length` was computed by applying the `length()` Spark SQL function to the `review_body` column, capturing the total character count of the review text as a proxy for review depth and quality. A `Tokenizer` was applied to `review_body` to produce `review_tokens`, which splits the review text into individual words. The logistic regression baseline applies `StandardScaler` through its own pipeline stage.
 
-**Stage 4 — Target Engineering (`cleansing4`)**
-Reviews with zero total votes are filtered. Binary label is defined as `label = 1` if `helpful_votes / total_votes ≥ 0.5`, else `0`. Stratified sampling by star rating (`{1:0.6, 2:1.0, 3:0.67, 4:0.32, 5:0.09}`) balances class distribution. Final 5 features are assembled via `VectorAssembler`.
+### Step 4: Target Engineering and Sampling
+Rows where `total_votes` equals 0 were removed because a helpfulness ratio cannot be computed for them. The target variable `helpfulness_ratio` was computed as `helpful_votes / total_votes`. A binary label column was created where label = 1.0 if helpfulness_ratio >= 0.5 and label = 0.0 otherwise. Log-transformed columns were created using the `log1p` Spark SQL function. `log_review_length` is used as a model feature. The `log1p` transformation compresses the long right tail in review lengths. Stratified sampling was applied using `sampleBy` on `star_rating` with fractions {1: 0.6, 2: 1.0, 3: 0.67, 4: 0.32, 5: 0.09} to address the heavy skew toward 5-star reviews in the original dataset.
 
-**Result:** 109,830,520 → 11,405,130 rows (89.62% noise removed)
-**Label distribution:** Label 0: 3,330,981 / Label 1: 8,074,149 (~2.4× imbalance)
-**Features:** `star_rating`, `review_length`, `review_headline_length`, `verified_purchase_idx`, `category_idx`
-**Split:** 70/15/15 (train/val/test, seed=42)
+## 2. First Distributed Model
+### Setup
+All models were trained on SDSC Expanse using a Spark session configured with 15 executors, 1 core per executor, and 8 GB of memory per executor. Multiple executors were verified and are shown in the screenshot below:
+<img width="523" height="57" alt="Screenshot" src="https://github.com/user-attachments/assets/b72c09b8-759e-4806-9b4c-eaa612b78c60" />
 
----
+This screenshot was taken during the initial data loading phase. Multiple active executors are visible in the Spark UI, confirming that the job ran in a distributed configuration across SDSC Expanse resources rather than locally.
 
-## 2. Train Your First Distributed Model (8 points)
+The five features used for all models are `star_rating`, `log_review_length`, `review_headline_length`, `verified_purchase_idx`, and `category_idx`. These features were selected because they are available for every review, require no text processing, and cover the rating scale, review effort, purchase authenticity, and product domain. The dataset was split into train (70%), validation (15%), and test (15%) sets using a fixed random seed of 42 for reproducibility.
 
-Models were trained on **SDSC Expanse** using Spark MLlib with the following configuration:
+### Models
+Five models were trained. A logistic regression model was trained as a baseline using `LogisticRegression` from `pyspark.ml.classification` with `maxIter=20` and `regParam=0.01`, preceded by a `StandardScaler` in a `Pipeline`. Four random forest (RF) models were trained using `RandomForestClassifier` from `pyspark.ml.classification` with varying hyperparameters to support the fitting analysis. All random forest models used `maxBins=64` and `seed=42`.
 
-```
-spark.executor.instances = 15
-spark.executor.memory    = 8g
-spark.driver.memory      = 4g
-spark.sql.shuffle.partitions = 400
-```
+### Results
+| Model | Train AUC | Val AUC | Test AUC | Train F1 | Val F1 | Test F1 |
+|---|---|---|---|---|---|---|
+| Logistic Regression (Baseline) | 0.6623 | 0.6628 | 0.6633 | 0.6364 | 0.6373 | 0.6360 |
+| RF (numTrees=20, maxDepth=15) | 0.7096 | 0.7060 | 0.7065 | 0.6871 | 0.6854 | 0.6842 |
+| RF (numTrees=20, maxDepth=5) | 0.6725 | 0.6722 | 0.6732 | 0.6398 | 0.6402 | 0.6391 |
+| RF (numTrees=50, maxDepth=15) | 0.7098 | 0.7061 | 0.7068 | 0.6874 | 0.6856 | 0.6845 |
+| RF (numTrees=30, maxDepth=12, sqrt) | 0.7025 | 0.7019 | 0.7027 | 0.6828 | 0.6830 | 0.6819 |
+ 
+AUC (area under the ROC curve) and F1 score were used as the primary evaluation metrics because the label distribution is imbalanced. Label 1 accounts for approximately 2.4 times as many rows as label 0. Under this imbalance, a classifier that predicts the majority class for every input would achieve high accuracy while providing no useful predictions. AUC measures the model's ability to rank helpful reviews above unhelpful ones across classification thresholds, and F1 balances precision and recall. Both metrics are more informative than accuracy for imbalanced binary classification.
 
-### Model 1: Random Forest (numTrees=20)
+### Ground Truth and Predictions
+Example predictions for the first five rows from RF (numTrees=20, maxDepth=15) on the train, validation, and test sets are shown in the screenshot below. Each example displays the true label, the predicted label, and the probability vector (the model's estimated probability of label 0 and label 1).
 
-```python
-rf20 = RandomForestClassifier(featuresCol="features", labelCol="label",
-                               numTrees=20, maxBins=64, seed=42)
-```
+<img width="288" height="428" alt="Example predictions" src="https://github.com/user-attachments/assets/c848547b-618c-4b7e-8934-2a0add37d66d" />
 
-| Split | AUC-ROC | F1 | Accuracy |
-|-------|---------|----|----------|
-| Train | 0.6727 | 0.6406 | 0.7208 |
-| Val   | 0.6733 | 0.6408 | — |
-| Test  | 0.6723 | 0.6407 | 0.7208 |
+These examples confirm that the model produces probabilities and correctly classifies reviews in the majority of cases across all three splits.
 
-### Model 2: Random Forest (numTrees=50)
+### Feature Importance
+The most important feature for RF (numTrees=20, maxDepth=15) is `star_rating`, followed by `log_review_length` and `review_headline_length`. `verified_purchase_idx` and `category_idx` contribute less to the model's decisions. The dominance of `star_rating` suggests that the rating a reviewer assigns is strongly predictive of whether other users find the review useful. The importance of review length indicates that longer reviews tend to be more helpful, consistent with the intuition that more detailed reviews provide more value to potential buyers.
 
-```python
-rf50 = RandomForestClassifier(featuresCol="features", labelCol="label",
-                               numTrees=50, maxBins=64, seed=42)
-```
+## 3. Fitting Analysis
+### Where each model fits on the fitting graph
+The logistic regression model underfits. The train AUC of 0.6623 and test AUC of 0.6633 are both low, and the near-zero train/test gap confirms the issue is insufficient model capacity rather than overfitting. A linear decision boundary cannot represent the nonlinear relationships between star rating, review length, and helpfulness present in this dataset.
 
-| Split | AUC-ROC | F1 | Accuracy |
-|-------|---------|----|----------|
-| Train | 0.6684 | 0.6431 | 0.7212 |
-| Val   | 0.6692 | 0.6434 | — |
-| Test  | 0.6683 | 0.6433 | 0.7213 |
+RF (numTrees=20, maxDepth=5) also underfits. The test AUC of 0.6732 is only marginally better than logistic regression. Trees with a maximum depth of 5 are not deep enough to capture the interactions between all five features. The model can identify broad patterns but cannot distinguish the finer combinations of feature values that separate helpful from unhelpful reviews.
 
-### Model 3: GBT (maxIter=20, maxDepth=3)
+RF (numTrees=20, maxDepth=15), RF (numTrees=50, maxDepth=15), and RF (numTrees=30, maxDepth=12, sqrt) all fall in the good fit region. Their train/test AUC gaps are all under 0.004, indicating that the models generalize well without memorizing the training set. The small and consistent gap across train, validation, and test splits shows that these models may have found a stable decision boundary that transfers to unseen examples.
 
-```python
-gbt = GBTClassifier(featuresCol="features", labelCol="label",
-                    maxIter=20, maxDepth=3, maxBins=64, stepSize=0.1, seed=42)
-```
+### Hyperparameter Comparison
+The most impactful hyperparameter is `maxDepth`. Increasing it from 5 to 15 raises test AUC from 0.6732 to 0.7065, a gain of 0.033. This large jump confirms that the underlying patterns in the data require deeper decision boundaries. Each additional level of depth allows the tree to condition on finer combinations of feature values, capturing interactions that shallower trees miss entirely.
 
-| Split | AUC-ROC | F1 | Accuracy |
-|-------|---------|----|----------|
-| Train | 0.7008 | 0.6778 | 0.7295 |
-| Val   | 0.7010 | 0.6778 | — |
-| Test  | 0.7007 | 0.6778 | 0.7295 |
+Increasing `numTrees` from 20 to 50 at maxDepth=15 raises test AUC by only 0.0003, from 0.7065 to 0.7068. With only 5 features, the variance of the forest is already low at 20 trees because there are limited ways to split the feature space. Adding more trees beyond the point of convergence averages together trees that are making nearly identical decisions, so adding more provides no meaningful improvement.
 
-### Full Comparison Table
+Using `featureSubsetStrategy="sqrt"` with numTrees=30 and maxDepth=12 produces a test AUC of 0.7027, falling between the shallow and deep models. The square root strategy restricts each split candidate to approximately 2 of the 5 features, which introduces more diversity among trees and reduces correlation between them. With only 5 features, restricting splits to roughly 2 features removes too much information at each split.
 
-| Model | Train AUC | Test AUC | Train F1 | Test F1 | Train ACC | Test ACC |
-|-------|-----------|----------|----------|---------|----------|----------|
-| RF (numTrees=20) | 0.6727 | 0.6723 | 0.6406 | 0.6407 | 0.7208 | 0.7208 |
-| RF (numTrees=50) | 0.6684 | 0.6683 | 0.6431 | 0.6433 | 0.7212 | 0.7213 |
-| **GBT (iter=20, depth=3)** | **0.7008** | **0.7007** | **0.6778** | **0.6778** | **0.7295** | **0.7295** |
+### Best Model
+The random forest (numTrees=50, maxDepth=15) achieved the highest predictive performance with a test AUC of 0.7068 and a test F1 of 0.6845. However, the improvement over RF (numTrees=20, maxDepth=15) was extremely small (+0.0003 AUC and +0.0003 F1) despite requiring substantially more training time due to the additional trees. Therefore, RF (numTrees=20, maxDepth=15) is the preferred practical model because it provides nearly identical predictive performance at a lower computational cost. On the full 50 GB dataset, training time scales with tree count, so the 20-tree model offers a better tradeoff between efficiency and model quality.
+ 
+### Next Models for Milestone 4
+PCA (Principal Component Analysis) followed by a supervised model is planned as the second model. PCA will compress the 5 structured features into a smaller number of principal components that capture the directions of maximum variance in the data. A random forest will then be retrained on the reduced feature space, allowing a direct comparison between full-feature and reduced-feature performance. This will reveal whether the original features contain redundant or correlated information that PCA can eliminate.
+ 
+SVD (Singular Value Decomposition) is another option. SVD can factorize the feature matrix into lower-dimensional latent representations and may reveal structure not visible in the original feature space.
 
-### Example Ground Truth and Predictions — RF (numTrees=20)
+## 4. Conclusion
+### Conclusion of the First Model
+Using five structured metadata features (`star_rating`, `log_review_length`, `review_headline_length`, `verified_purchase_idx`, and `category_idx`), the best model RF (numTrees=20, maxDepth=15) achieved a test AUC of 0.7065 and a test F1 of 0.6842. This is a meaningful improvement over the logistic regression baseline of 0.6633 AUC, representing a gain of 0.043 points. The consistent train/val/test gap of less than 0.004 across all three splits confirms that the model generalizes well and is not overfitting. At the same time, a test AUC of approximately 0.71 indicates that structured metadata alone provides a limited signal for predicting helpfulness. The content of the review itself is not captured by any of the five features and likely carries substantially more predictive information.
 
-**Train Set:**
-| label | prediction | star_rating | review_length | review_headline_length | verified_purchase_idx | category_idx |
-|-------|------------|-------------|---------------|------------------------|----------------------|--------------|
-| 0.0 | 0.0 | 1 | 1 | 1 | 0.0 | 24.0 |
-| 1.0 | 0.0 | 1 | 1 | 8 | 0.0 | 0.0 |
-| 0.0 | 0.0 | 1 | 2 | 2 | 0.0 | 3.0 |
-| 0.0 | 0.0 | 1 | 2 | 2 | 0.0 | 5.0 |
-| 0.0 | 0.0 | 1 | 2 | 8 | 0.0 | 3.0 |
+### What Can Be Done to Improve It
+The most promising improvement would be incorporating text features from the `review_body` column. Adding TF-IDF vectors or Word2Vec embeddings would give the model access to the actual words used in the review, which is likely the strongest predictor of whether other users find it helpful. Reviews that are specific, detailed, and comparative tend to be rated as more helpful, and these qualities can only be captured through the text itself. The tokenizer already applied during preprocessing makes this a natural next step. Applying PCA before training may also reduce noise from correlated features. Applying class weights during training or further adjusting the sampling fractions could improve F1 on the minority class.
 
-**Validation Set:**
-| label | prediction | star_rating | review_length | review_headline_length | verified_purchase_idx | category_idx |
-|-------|------------|-------------|---------------|------------------------|----------------------|--------------|
-| 0.0 | 0.0 | 1 | 1 | 8 | 0.0 | 2.0 |
-| 1.0 | 0.0 | 1 | 2 | 8 | 0.0 | 5.0 |
-| 0.0 | 0.0 | 1 | 3 | 4 | 0.0 | 2.0 |
-| 0.0 | 0.0 | 1 | 3 | 8 | 0.0 | 0.0 |
-| 0.0 | 0.0 | 1 | 3 | 8 | 0.0 | 0.0 |
+### How Distributed Computing Helped
+Training on SDSC Expanse with 15 executors made it practical to train and compare five models on 11 million rows within a single session. The most complex model, RF (numTrees=50, maxDepth=15), involves building 50 deep decision trees across a large partitioned dataset. Spark distributed the tree-building tasks across executors in parallel, with each executor processing a separate partition of the training data independently and contributing to the construction of each tree through aggregated split statistics. Without parallelization, iterating across five model configurations at this data scale would have required many hours on a single core, making hyperparameter comparison effectively impractical. Spark's distributed execution made it feasible to perform the full training, evaluation, and feature importance analysis for each model.
 
-**Test Set:**
-| label | prediction | star_rating | review_length | review_headline_length | verified_purchase_idx | category_idx |
-|-------|------------|-------------|---------------|------------------------|----------------------|--------------|
-| 1.0 | 0.0 | 1 | 2 | 8 | 0.0 | 3.0 |
-| 0.0 | 0.0 | 1 | 2 | 8 | 0.0 | 5.0 |
-| 0.0 | 0.0 | 1 | 3 | 8 | 0.0 | 7.0 |
-| 1.0 | 0.0 | 1 | 4 | 8 | 0.0 | 5.0 |
-| 0.0 | 0.0 | 1 | 4 | 8 | 0.0 | 18.0 |
 
----
+## 5. Speedup Analysis
+### Methodology
+The operation timed was the full training and evaluation pipeline for RF (numTrees=20, maxDepth=15): pipeline fit on the training set, transform on all three splits, and `.count()` on each split to force Spark to materialize all lazy transformations and produce an accurate wall-clock measurement. The same checkpointed dataset and identical code were used for both configurations. The 1-executor baseline and the 15-executor scaled run both used 8 GB executor memory and 1 executor core per executor.
 
-## 3. Fitting Analysis (4 points)
-
-### Where does the model fit on the fitting graph?
-
-All three models show Train AUC ≈ Val AUC ≈ Test AUC (gap < 0.002), placing them in the **good fit** zone with no significant overfitting.
-
-| Model | Diagnosis |
-|-------|-----------|
-| RF (numTrees=20) | Good fit — Test AUC 0.6723. Moderate performance; structured features alone have limited signal. |
-| RF (numTrees=50) | Slight underfitting compared to RF20 — more trees doesn't contribute to the performance, it seems it's because 20 trees were enough for fitting. |
-| **GBT (iter=20, depth=3)** | **Good fit** — Test AUC 0.7007, highest among all models. Sequential error correction gives clear advantage. |
-
-### Hyperparameter Comparison: RF20 vs RF50
-
-Counterintuitively, RF50 performs worse than RF20 (Test AUC 0.6683 vs 0.6727). It is not significant difference. 20 trees are enough for fitting the dataset.
-
-### Which model performs best and why?
-
-**GBT (maxIter=20, maxDepth=3)** is the best model with Test AUC 0.7007 (+0.028 over RF20). Gradient boosting corrects residual errors sequentially at each round, capturing non-linear interactions such as the interplay between star rating and review length that a single-pass RF ensemble misses. Shallow trees (maxDepth=3) prevent overfitting while still modeling meaningful patterns.
-
-### Next models planned for Milestone 4
-
-| Model | Reason |
-|-------|--------|
-| **GBT with more iterations** | Increase `maxIter` to 50-100 with `stepSize=0.05` to test if deeper boosting improves AUC further |
-| **XGBoost** (`SparkXGBClassifier`) | More efficient implementation of gradient boosting with column/row subsampling — expected higher AUC than GBT |
-
----
-
-## 4. Conclusion Section (5 points)
-
-### What is the conclusion of the 1st model?
-
-Using 5 structured features from the Amazon review dataset — star rating, review body length, headline length, verified purchase status, and product category — GBT (maxIter=20, maxDepth=3) achieves the best performance with **Test AUC 0.7007, F1 0.6778, and Accuracy 0.7295**. The model generalizes well (Train ≈ Val ≈ Test, gap is lower than 0.001), considering there is no overfitting. GBT's sequential error correction outperforms Random Forest's parallel ensemble approach on this task eventhough the gap is not large, still demonstrating that helpfulness prediction benefits from capturing non-linear feature interactions.
-
-### What can be done to improve it?
-
-1. **More boosting rounds**: Increasing `maxIter` from 20 to 50-100 with a smaller `stepSize` (0.05) could further reduce residual errors
-2. **Additional feature engineering**: Log-transformed vote counts (`log_total_votes`)
-3. **Richer text features**: Replace character-count `review_length` with TF-IDF vectors or sentence embeddings from `review_body` — semantic content is a stronger helpfulness signal than raw length
-
-### How did distributed computing help?
-
-Training on 36M rows (filtered and sampled from 109M) across multiple Spark executors on SDSC Expanse parallelizes the data scanning and tree-building stages of GBT. Without distributed execution, even loading the full 50GB parquet dataset would exceed single-machine memory. Spark MLlib's Pipeline API ensures the preprocessing and modeling steps are reproducible and scalable across the cluster. (However, since the SpeedUp efficiency was low, the distributed computing was not as critical as expected)
-
----
-
-## 5. Speedup Analysis (5 points)
-
-### Speedup Table
-
-**GBT Model Training:**
-
+### Results
 | Executors | Time (sec) | Speedup | Efficiency |
-|-----------|------------|---------|------------|
-| 1 | 165.68 | 1.00× | 100% |
-| 15 | 150.19 | 1.10× | 7.4% |
+|---|---|---|---|
+| 1 | 711.65 | 1.00x | 100% |
+| 15 | 396.39 | 1.80x | 12.0% |
 
-**Preprocessing Pipeline:**
+### Calculations
+Speedup:
+ 
+$$S = \frac{T_1}{T_{15}} = \frac{711.65}{396.39} \approx 1.80\text{x}$$
+ 
+Efficiency:
+ 
+$$E = \frac{S}{n} = \frac{1.80}{15} \approx 12.0\%$$
+ 
+Parallelizable fraction (Amdahl's Law):
+ 
+$$p = \frac{n(S - 1)}{S(n - 1)} = \frac{15 \times 0.80}{1.80 \times 14} \approx 0.48$$
+ 
+Theoretical maximum speedup:
+ 
+$$S_{\max} = \frac{1}{1 - p} \approx 1.92\text{x}$$
 
-| Executors | Time (sec) | Speedup | Efficiency |
-|-----------|------------|---------|------------|
-| 1 | 112.36 | 1.00× | 100% |
-| 15 | 109.65 | 1.02× | 6.8% |
+Amdahl Efficiency vs Limit
+$$
+\frac{S}{S_{\max}} = \frac{1.80}{1.92} = 0.9375
+$$
 
-### Amdahl's Law Analysis
+### Analysis
+The measured speedup of 1.80x reaches approximately 94% of the theoretical Amdahl limit of 1.92x, meaning our implementation is already near the practical scaling limit for this workload. The estimated parallelizable fraction of 48% indicates that adding executors provides limited returns because a substantial portion of the workload remains sequential. Key constraints on scaling include the limited parallelism available in Random Forest training, driver-side coordination overhead, and shuffle costs that do not shrink as executor count increases.
 
-**GBT Model Training:**
-speedup = 1.10
-n = 15
-
-p = (1 - 1 / speedup) / (1 - 1 / n) # output: 0.097
-speedup_max = 1 / ((1 - p) + (p / n)) # output: 1.10x
-
-Only about 9.7% of the GBT model training process is effectively parallelized. The remaining 90.3% operates as serial workload. 
-The bottleneck may be that GBT is an inherently sequential model. Because each tree must be built iteratively based on the previous one, the workload is fundamentally serial and cannot effectively benefit from distributed computing.
-
-**GPreprocessing Pipeline:**
-speedup = 1.02
-n = 15
-
-p = (1 - 1 / speedup) / (1 - 1 / n) # Output: 0.021
-speedup_max = 1 / ((1 - p) + (p / n)) # output: 1.02x
-
-The parallelizable fraction here is even lower, at just 2.1%. This indicates that almost the entire preprocessing pipeline (97.9%). The preprocessing pipeline was optimized with minimal use of shuffle-heavy methods, meaning data movement didn't occured much.
+## Notebook
+**Jupyter notebook:** [Milestone3.ipynb](Milestone3.ipynb)
