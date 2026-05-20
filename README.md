@@ -45,7 +45,7 @@ Example predictions for the first five rows from RF (numTrees=20, maxDepth=15) o
 
 <img width="288" height="428" alt="Example predictions" src="https://github.com/user-attachments/assets/c848547b-618c-4b7e-8934-2a0add37d66d" />
 
-These examples confirm that the model produces probabilities and correctly classifies reviews in the majority of cases across all three splits.
+These examples confirm that the model produces probabilities and correctly classifies reviews in some cases across all three splits.
 
 ### Feature Importance
 The most important feature for RF (numTrees=20, maxDepth=15) is `star_rating`, followed by `log_review_length` and `review_headline_length`. `verified_purchase_idx` and `category_idx` contribute less to the model's decisions. The dominance of `star_rating` suggests that the rating a reviewer assigns is strongly predictive of whether other users find the review useful. The importance of review length indicates that longer reviews tend to be more helpful, consistent with the intuition that more detailed reviews provide more value to potential buyers.
