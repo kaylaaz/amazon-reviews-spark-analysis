@@ -111,7 +111,8 @@ Theoretical maximum speedup:
  
 $$S_{\max} = \frac{1}{1 - p} \approx 1.92\text{x}$$
 
-Amdahl Efficiency vs Limit
+Amdahl Efficiency vs Limit:
+
 $$
 \frac{S}{S_{\max}} = \frac{1.80}{1.92} = 0.9375
 $$
