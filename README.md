@@ -289,7 +289,7 @@ Vine vs. non-Vine helpfulness ratio
  
 <img width="480" height="400" alt="Class Distribution After Preprocessing" src="https://github.com/user-attachments/assets/0ba8e380-02a2-4442-8d31-9d077d061269" />
 
-*Figure 10. Class distribution of the binary label after preprocessing. Label 1 (helpful) totals 8,074,149 vs. 3,330,981 for label 0 — a ~2.4:1 imbalance that motivates AUC and F1 as evaluation metrics rather than accuracy.*
+*Figure 10. Class distribution of the binary label after preprocessing. Label 1 (helpful) totals 8,074,149 vs. 3,330,981 for label 0. There's around a 2.4:1 imbalance that motivates AUC and F1 as evaluation metrics rather than accuracy.*
 
 ### 4.3 Model 1 Results
 
