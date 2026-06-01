@@ -421,7 +421,7 @@ Kayla Zhu: Writer/ Coder: Wrote the project abstract; contributed Milestone 2 co
 
 Hyungwoo Kwon: Contributed to the questions that the group will handle; contributed to Milestone 2 code (data exploration and visualizations); allocated Milestone 3 preprocessing tasks and wrote the baseline notebook. Wrote the final Milestone 4 PCA code and prediction analysis.
 
-Name: Title: Contribution
+Anuradha Jaganathan: Writer/Coder: Contributed to project abstract. In Milestone 2, contributed to data analysis,visualization and configuration setup. In Milestone 3 responsible for data cleansing, and trained and tested Random forest, GBT models to compare against logistic regression, split analysis and provided feedback on final code submitted based on the outputs. In Milestone 4, trained and tested PCA, responsible for co-efficient analysis and related writeup.
 
 Name: Title: Contribution
 
