@@ -419,7 +419,7 @@ This project demonstrated that distributed computing is not optional at this sca
 
 Kayla Zhu: Writer/ Coder: Wrote the project abstract; contributed Milestone 2 code (data exploration and visualizations); wrote the Milestone 2 README; completed the Milestone 3 code (preprocessing pipeline, trained and compared the logistic regression baseline and eight Random Forest configurations, example ground-truth and predictions, fitting analysis, hyperparameter comparison, visualizations, and speedup analysis); wrote the Milestone 3 README; co-wrote the final Milestone 4 README; provided feedback throughout.
 
-Name: Title: Contribution
+Hyungwoo Kwon: Contributed to the questions that the group will handle; contributed to Milestone 2 code (data exploration and visualizations); allocated Milestone 3 preprocessing tasks and wrote the baseline notebook. Wrote the final Milestone 4 PCA code and prediction analysis.
 
 Name: Title: Contribution
 
