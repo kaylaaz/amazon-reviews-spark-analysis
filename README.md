@@ -184,7 +184,7 @@ def cleansing4(df):
     return df
 ```
  
-Rows with `total_votes == 0` were dropped, the `helpfulness_ratio` and binary `label` were computed, a `log1p` transform produced `log_review_length`, and stratified sampling via `sampleBy` on `star_rating` was applied with fractions {1: 0.6, 2: 1.0, 3: 0.67, 4: 0.32, 5: 0.09} to address the heavy skew toward 5-star reviews.
+Rows with `total_votes == 0` were dropped, the `helpfulness_ratio` and binary `label` were computed, a `log1p` transform produced `log_review_length`, and stratified sampling via `sampleBy` on `star_rating` was applied with fractions {1: 0.6, 2: 1.0, 3: 0.67, 4: 0.32, 5: 0.09} to address the heavy skew toward 5 star reviews.
  
 Preprocessing reduced the data from 109,830,520 to 11,405,130 rows (an 89.62% reduction), which was driven by the removal of invalid categories, invalid star ratings, nulls, and duplicates, removal of zero `total_votes` rows, and stratified downsampling. The resulting label distribution is 3,330,981 (label 0) and 8,074,149 (label 1). Label 1 is about 2.4 times more frequent, which motivates the use of AUC and F1 rather than accuracy.
 
@@ -208,10 +208,10 @@ A logistic regression baseline (`maxIter=20`, `regParam=0.01`, with `StandardSca
 | Model | numTrees | maxDepth | Notes |
 |---|---|---|---|
 | Logistic Regression | — | — | baseline, StandardScaler |
-| RF 1 | 20 | 15 | — |
-| RF 2 | 20 | 5 | shallow |
-| RF 3 | 50 | 15 | more trees |
-| RF 4 | 30 | 12 | `featureSubsetStrategy="sqrt"` |
+| Random Forest 1 | 20 | 15 | — |
+| Random Forest 2 | 20 | 5 | shallow |
+| Random Forest 3 | 50 | 15 | more trees |
+| Random Forest 4 | 30 | 12 | `featureSubsetStrategy="sqrt"` |
 
 ### 3.4 Model 2: Dimensionality Reduction (PCA) plus Logistic Regression
 
@@ -283,7 +283,7 @@ Review length vs. helpfulness ratio
  
 <img width="500" height="280" alt="Length vs Helpfulness" src="https://github.com/user-attachments/assets/93a06019-87fd-4950-94a7-a93ad7f8e86c" />
 
-*Figure 6. Longer reviews tend to receive higher helpfulness ratios; short reviews (under 500 chars) cluster around 0.68 to 0.75, while reviews near 5,000 chars reach 0.85 to 0.93.*
+*Figure 6. Longer reviews tend to receive higher helpfulness ratios; short reviews (under 500 characters) cluster around 0.68 to 0.75, while reviews near 5,000 characters reach 0.85 to 0.93.*
  
 Reviews per year and average helpfulness ratio per year
  
@@ -321,7 +321,7 @@ AUC (area under the ROC curve) and F1 were used as primary metrics because the l
  
 <img width="450" height="250" alt="Model Comparison Test AUC and Test F1" src="https://github.com/user-attachments/assets/bc5a0501-7a40-4fed-ac1d-bca6ab50e6f5" />
 
-*Figure 11. Test AUC and Test F1 for all five Model 1 configurations. The deep Random Forests (maxDepth=15) lead on both metrics, while the linear baseline and the shallow forest (maxDepth=5) trail.*
+*Figure 11. Test AUC and Test F1 for all five Model 1 configurations. The deep Random Forests (maxDepth=15) lead on both metrics, while the baseline and the shallow forest (maxDepth=5) trail.*
  
 Feature importance (RF numTrees=20, maxDepth=15), ranked by Gini importance from the trained model:
  
@@ -381,7 +381,7 @@ Component loadings (sign indicates direction, magnitude indicates contribution):
 
 *Figure 16. PCA projection coefficients by star rating. PC1 ("Review Effort") is flat across all five rating groups, confirming review effort is independent of sentiment. PC2 ("Star Rating") increases monotonically from 1 star to 5 stars, confirming it encodes star rating. PC3 ("Category") also trends with star rating, reflecting the shared `star_rating` and `category_idx` variance seen in the loadings.*
  
-PCA plus LR performance vs. baseline models:
+PCA plus Logistic Regression (LR) performance vs. baseline models:
  
 | Model | Train AUC | Val AUC | Test AUC | Train F1 | Test F1 | Features |
 |---|---|---|---|---|---|---|
@@ -444,21 +444,21 @@ The measured speedup of 1.80x reaches approximately 94% of the theoretical Amdah
  
 <img width="500" height="300" alt="Fitting Graph" src="https://github.com/user-attachments/assets/02f94320-e56e-4008-9623-4de6e802a57d" />
 
-*Figure 17. Fitting graph: Train and Test AUC as model capacity increases from the linear baseline through deeper Random Forests. Train and Test curves track each other closely at every capacity level, indicating no significant overfitting; performance rises with capacity and plateaus at maxDepth=15.*
+*Figure 17. Fitting graph: Train and Test AUC as model capacity increases from the baseline through deeper Random Forests. Train and Test curves track each other closely at every capacity level, indicating no significant overfitting; performance rises with capacity and plateaus at maxDepth=15.*
  
 ### Where each model fits on the fitting graph
  
-The logistic regression baseline and the shallow Random Forest (maxDepth=5) sit in the underfitting region: their train and test AUCs are both low (about 0.66 to 0.67) and nearly identical, the signature of insufficient model capacity rather than overfitting. The deeper Random Forests (maxDepth=12 and 15) sit in the good fit region, with train/test AUC gaps under 0.004 and the highest absolute scores (about 0.71). Performance plateaus between 20 and 50 trees at maxDepth=15, indicating the forest has converged.
+The logistic regression baseline and the shallow Random Forest (maxDepth=5) sit in the underfitting region: their train and test AUCs are both low (about 0.66 to 0.67) and nearly identical, which signifies insufficient model capacity rather than overfitting. The deeper Random Forests (maxDepth=12 and 15) sit in the good fit region, with train/test AUC gaps under 0.004 and the highest absolute scores (about 0.71). Performance plateaus between 20 and 50 trees at maxDepth=15, indicating the forest has converged.
  
 ### Where Model 2 (PCA plus LR) fits on the fitting graph
  
-PCA (k=3) plus Logistic Regression is in the good fit zone in terms of generalization because the train/val/test AUC gap is under 0.006, which means the model does not overfit. However, its absolute AUC (0.6347) puts it below both the logistic regression baseline and all Random Forest configurations. This is not overfitting or underfitting in the traditional sense. It is a capacity ceiling imposed by two compounding factors: (1) compressing 5 features into 3 components discards 29.1% of variance, including discriminative signal, and (2) Logistic Regression is a linear classifier that cannot recover nonlinear structure lost during compression. The model fits what it sees well, but it just sees less.
+PCA (k=3) plus Logistic Regression is in the good fit zone in terms of generalization because the train/val/test AUC gap is under 0.006, which means the model does not overfit. However, its absolute AUC (0.6347) puts it below both the logistic regression baseline and all Random Forest configurations. This is not overfitting or underfitting in the traditional sense. It is a capacity ceiling imposed by two compounding factors: (1) compressing 5 features into 3 components discards 29.1% of variance, including discriminative signal, and (2) Logistic Regression is a linear classifier that cannot recover the nonlinear structure lost during compression. The model fits what it sees well, but it just sees less.
  
 ### Future improvements and next models
  
 - Apply dimensionality reduction to high-dimensional inputs. PCA and SVD are most beneficial on large, correlated feature spaces such as TF-IDF or Word2Vec vectors from `review_body`, where compression removes genuine redundancy. The `Tokenizer` already in the pipeline makes this a natural next step.
 - SVD / LSA on text features. Factorizing a TF-IDF matrix of the review body into latent semantic components could surface structure invisible in the five structured features.
-- Nonlinear classifiers on the reduced or full feature space would capture interactions a linear model cannot.
+- Nonlinear classifiers on the reduced or full feature space would capture interactions that a linear model cannot.
 
 ### How dimensionality reduction affected results vs. the full feature set
  
@@ -470,13 +470,13 @@ Reducing from five features to three components (70.9% variance retained) lowere
  
 This section presents our interpretation and reasoning across both models, and where we are skeptical of our own results.
  
-Data exploration: The exploratory findings are internally consistent and based on the full 109M rows, which makes the aggregate trends trustworthy. The J shaped star distribution matches well documented review behavior (people review when very satisfied or very dissatisfied). The positive associations between review length and helpfulness, and between higher star ratings and helpfulness, both pointed toward features worth engineering. We are appropriately cautious about the verified vs. unverified and Vine vs. non-Vine gaps: although computed over very large samples, the differences are small (about 0.03), and the two comparisons used slightly different aggregation methods, so they should be read as suggestive rather than definitive.
+Data exploration: The exploratory findings are internally consistent and based on the full 109M rows, which makes the aggregate trends trustworthy. The J-shaped star distribution matches well documented review behavior (people review when very satisfied or very dissatisfied). The positive associations between review length and helpfulness, and between higher star ratings and helpfulness, both pointed toward features worth engineering. We are appropriately cautious about the verified vs. unverified and Vine vs. non-Vine gaps. Although it was computed over very large samples, the differences are small (about 0.03), and the two comparisons used slightly different aggregation methods, so they should be read as suggestive rather than definitive.
  
-Preprocessing: The 89.62% row reduction is large and deserves scrutiny. Most of it is expected and defensible: dropping reviews with `total_votes == 0` removes the large majority of rows (most reviews are never voted on), and stratified downsampling deliberately discards a large share of 5 star reviews to balance the classes. A shortcoming worth noting is that aggressive filtering plus downsampling means our models describe the voted, class balanced subset of reviews rather than the full population, which limits how far conclusions generalize to never voted reviews.
+Preprocessing: The 89.62% row reduction is large and deserves scrutiny. Most of it is expected and defensible. Dropping reviews with `total_votes == 0` removes the large majority of rows (most reviews are never voted on), and stratified downsampling deliberately discards a large share of 5 star reviews to balance the classes. A shortcoming worth noting is that aggressive filtering plus downsampling means our models describe the voted, class balanced subset of reviews rather than the full population, which limits how far conclusions generalize to never voted reviews.
  
 Model 1: The best Random Forest reaches a test AUC of about 0.71, a clear improvement over the logistic regression baseline (0.6633), and the train/test AUC gap under 0.004 indicates the model generalizes rather than memorizes. We interpret the logistic regression and shallow (maxDepth=5) forest as underfitting because low scores with near zero gaps point to insufficient capacity, implying a nonlinear relationship between these features and helpfulness. The most informative result is the feature importance: `log_review_length` dominates (0.41), followed by `category_idx` (0.29) and `star_rating` (0.25). This aligns with the exploratory finding that longer reviews are rated more helpful and suggests effort and detail matter as much as the rating itself.
  
-Model 2: The PCA result is interpretable and the component loadings tell a coherent story. PC1, combining `log_review_length`, `verified_purchase_idx`, and `review_headline_length`, is a plausible reviewer effort axis because people who write longer reviews with longer headlines and verified purchases are investing more in their feedback, and effort correlates with helpfulness. This is consistent with the feature importance ranking from Model 1, where those same three features account for roughly 0.47 combined Gini importance. However, we are skeptical of treating the PCA result as a performance improvement, because it clearly is not one. The AUC drop from 0.6633 (full feature LR) to 0.6347 (PCA plus LR) is a direct consequence of the feature set being too small and too independent for PCA to be beneficial. The loadings show that `star_rating` and `category_idx` load only weakly on PC1 and instead spread their variance across PC2 and PC3, so PCA is not discovering compact latent structure among the five features; it is rotating two already independent features into two of the three retained components and then discarding 29.1% of the combined variance through truncation. The high False Positive rate (28.2%) combined with near zero False Negatives (0.7%) exposes the model's failure mode: it defaults to predicting label 1 (helpful) for nearly everything, which is the path of least resistance given the 2.4 to 1 class imbalance and a linear decision boundary that cannot adapt to the nonlinear structure the RF exploits. A class weighted logistic regression or a nonlinear classifier applied after PCA would probably tighten this gap, but the fundamental issue is the low input dimensionality.
+Model 2: The PCA result is interpretable and the component loadings tell a coherent story. PC1, combining `log_review_length`, `verified_purchase_idx`, and `review_headline_length`, is a plausible reviewer effort axis because people who write longer reviews with longer headlines and verified purchases are investing more in their feedback, and effort correlates with helpfulness. This is consistent with the feature importance ranking from Model 1, where those same three features account for roughly 0.47 combined Gini importance. However, we are skeptical of treating the PCA result as a performance improvement, because it clearly is not one. The AUC drop from 0.6633 (full feature LR) to 0.6347 (PCA plus LR) is a direct consequence of the feature set being too small and too independent for PCA to be beneficial. The loadings show that `star_rating` and `category_idx` load only weakly on PC1 and instead spread their variance across PC2 and PC3, so PCA is not discovering compact latent structure among the five features; it is rotating two already independent features into two of the three retained components and then discarding 29.1% of the combined variance through truncation. The high False Positive rate (28.2%) combined with near zero False Negatives (0.7%) exposes the model's failure mode. It defaults to predicting label 1 (helpful) for nearly everything, which is the path of least resistance given the 2.4 to 1 class imbalance and a linear decision boundary that cannot adapt to the nonlinear structure the RF exploits. A class weighted logistic regression or a nonlinear classifier applied after PCA would probably tighten this gap, but the fundamental issue is the low input dimensionality.
  
 ---
  
@@ -490,7 +490,7 @@ To improve Model 1, we can incorporate text features from `review_body` (TF-IDF 
  
 ### Conclusion of Model 2
  
-PCA applied to five engineered features produces three principal components retaining 70.9% of variance. The downstream Logistic Regression generalizes well (train/val/test AUC gap under 0.006) but reaches only a test AUC of 0.6347, below both the full feature LR baseline (0.6633) and the best Random Forest (0.7068). The core finding is that PCA does not always help. It is most effective when the input space is high dimensional and correlated, so that compression removes redundancy. Here, the five structured features are largely independent: `star_rating` and `category_idx` load weakly on PC1 and dominate PC2 and PC3 instead, so compression discards discriminative signal rather than noise. To improve Model 2, the most impactful change would be to apply PCA or SVD to a high dimensional text representation of `review_body`, where genuine redundancy exists and dimensionality reduction is expected to help rather than hurt. Alternatively, replacing Logistic Regression with a nonlinear classifier such as Gradient Boosted Trees after the PCA step would allow the downstream model to recover some of the nonlinear structure that compression and a linear boundary together remove.
+PCA applied to five engineered features produces three principal components retaining 70.9% of variance. The downstream Logistic Regression generalizes well (train/val/test AUC gap under 0.006) but reaches only a test AUC of 0.6347, below both the full feature LR baseline (0.6633) and the best Random Forest (0.7068). The core finding is that PCA does not always help. It is most effective when the input space is high dimensional and correlated, so that compression removes redundancy. Here, the five structured features are largely independent. `star_rating` and `category_idx` load weakly on PC1 and dominate PC2 and PC3 instead, so compression discards discriminative signal rather than noise. To improve Model 2, the most impactful change would be to apply PCA or SVD to a high dimensional text representation of `review_body`, where genuine redundancy exists and dimensionality reduction is expected to help rather than hurt. Alternatively, replacing Logistic Regression with a nonlinear classifier such as Gradient Boosted Trees after the PCA step would allow the downstream model to recover some of the nonlinear structure that compression and a linear boundary together remove.
  
 ### What We Learned
 This project demonstrated that distributed computing is not optional at this scale. We learned how Spark partitions data and parallelizes both aggregations and ensemble training, how checkpointing avoids recomputing expensive preprocessing, and why metric choice (AUC and F1 over accuracy) matters under class imbalance. Distributed computing changed our approach by letting us iterate across many model configurations within a single session, which would have been impractical on a single core. We also learned that more executors do not guarantee proportional speedup, and that PCA does not automatically help. With more time and resources, we would add review text features and extend the dimensionality reduction experiments to that larger feature space, where PCA and SVD are far more likely to provide real benefit, and we would study scaling behavior beyond 15 executors.
