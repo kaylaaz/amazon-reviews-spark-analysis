@@ -42,7 +42,8 @@ Formulas used:
  
 - `Executor instances = Total Cores - 1` = 16 - 1 = 15
 - `Executor memory = (Total Memory - Driver Memory) / Executor Instances` = (128 - 2) / 15, which is about 8.4 GB (configured at 8 GB per executor)
-Justification: 128 GB total memory across 16 cores balances volume and parallelism for this workload. The 50.68 GB dataset expands in memory during Spark operations, so allocating about 8 GB per executor prevents out of memory errors during aggregation heavy operations and model training. Reserving one core and memory for the driver keeps the cluster stable while maximizing parallel task execution across 15 worker executors.
+
+128 GB total memory across 16 cores balances volume and parallelism for this workload. The 50.68 GB dataset expands in memory during Spark operations, so allocating about 8 GB per executor prevents out of memory errors during aggregation heavy operations and model training. Reserving one core and memory for the driver keeps the cluster stable while maximizing parallel task execution across 15 worker executors.
 
 ### Spark Session Configuration
  
